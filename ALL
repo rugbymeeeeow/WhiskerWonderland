@@ -1,0 +1,257 @@
+using System.Collections;
+using TMPro;
+using UnityEngine;
+using XNode;
+using UnityEngine.UI;
+
+namespace WhiskerWonderland.View
+{
+    public class Say : MonoBehaviour
+    {
+        [SerializeField] private NodeGraph _dialogs; 
+        [SerializeField] private TextMeshProUGUI _name; 
+        [SerializeField] private TextMeshProUGUI _text; 
+        [SerializeField] private float _typingSpeed = 0.05f; 
+        [SerializeField] private AudioSource _typingSound;
+        [SerializeField] private Choice _choice;
+
+        private int _index; 
+        private string _currentText;
+        private Coroutine _typingCoroutine; 
+        private bool _isSkipping = false; 
+        private bool _isWaitingForNextDialog = false;
+
+
+        private Node _dialog;
+        private void Start()
+        {
+            if (_dialogs != null) NextDialog();
+        }
+
+        public void NextDialog()
+        {
+            if (_dialogs == null) return;
+
+            _dialog ??= _dialogs.nodes[index: 0];
+            switch (_dialog)
+            {
+                case Dialog dialog:
+                    _name.SetText(dialog.Name); 
+                    _currentText = dialog.Text; 
+                    _text.text = ""; 
+
+                    if (_typingCoroutine != null)
+                    {
+                        StopCoroutine(_typingCoroutine);
+                    }
+
+                    _typingCoroutine = StartCoroutine(TypeText());
+                    _isWaitingForNextDialog = false; 
+                    break;
+            }
+
+            Dialog dialogtmp = _dialog as Dialog;
+            if (dialogtmp._choice.Length == 0)
+            {
+                _dialog = _dialog.GetPort("_output").Connection.node;
+            }
+
+            ChoiceCreate(dialogtmp);
+        }
+
+        private void ChoiceCreate(Dialog dialog)
+        {
+            _choice.Show();
+            for (int i = 0; i < dialog._choice.Length; i++)
+            {
+                ChoiceElement tmp = new ChoiceElement();
+                tmp.Text = dialog._choice[i];
+                tmp.Node = dialog.GetPort($"_choice{i}").Connection.node;
+                _choice.Add(tmp, this);
+            }
+        }
+
+        private IEnumerator TypeText()
+        {
+            foreach (char letter in _currentText.ToCharArray())
+            {
+                if (_isSkipping)
+                {
+                    _text.text = _currentText; 
+                    _isSkipping = false; 
+                    _isWaitingForNextDialog = true; 
+                    yield break;
+                }
+
+                _text.text += letter;
+                if (_typingSound != null && !char.IsWhiteSpace(letter))
+                {
+                    _typingSound.Play();
+                }
+                yield return new WaitForSeconds(_typingSpeed);
+            }
+
+            _isWaitingForNextDialog = true; 
+        }
+
+        public void HandleInput()
+        {
+            if (_isWaitingForNextDialog)
+            {
+                _index++;
+                NextDialog();
+            }
+            else
+            {
+                _isSkipping = true;
+            }
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                HandleInput();
+            }
+            if (Input.GetMouseButtonDown(0)) 
+            {
+                HandleInput();
+            }
+        }
+
+        public void Choices(ChoiceButton choiceButton)
+        {
+            choiceButton.Hide();
+        }    
+    }
+}
+
+
+using UnityEngine;
+using XNode;
+
+public class ChoiceElement
+{
+    public string Text;
+    public Node Node;
+}
+
+
+using Unity.VisualScripting;
+using UnityEngine;
+using XNode;
+
+namespace WhiskerWonderland.View
+{
+    public class Choice : MonoBehaviour
+    {
+        [SerializeField] private Canvas _self;
+        [SerializeField] private Transform _parrent;
+        [SerializeField] private ChoiceButton _prefabs;
+
+        private ChoiceButton tmp;
+
+        public void Show() => _self.enabled = true;
+        public void Add(ChoiceElement choiceElement, Say say)
+        {
+            tmp = Instantiate(_prefabs, _parrent);
+            tmp.Say = say;
+            tmp.Show(choiceElement);
+        }
+        public void Hide() => _self.enabled = false;
+    }
+}
+
+
+using TMPro;
+using UnityEngine;
+using UnityEngine.UI;
+using XNode;
+
+namespace WhiskerWonderland.View
+{
+    public class ChoiceButton : MonoBehaviour
+    {
+        [SerializeField] private TextMeshProUGUI _text;
+        [SerializeField] private Button _self;
+        [SerializeField] private Say _say;
+
+        public Node Node { get; private set; }
+        public Say Say { set => _say = value;  }
+        public void Show(ChoiceElement choiceElement)
+        {
+            _text.SetText(choiceElement.Text);
+            Node = choiceElement.Node;
+            _self.onClick.AddListener(() => _say.Choices(this));
+        }
+
+        public void Hide() => Destroy(gameObject);
+    }
+}
+
+
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public class MainMenuScript : MonoBehaviour
+{
+
+    public void StartGame()
+    {
+        SceneManager.LoadScene(sceneName: "Game");
+    }
+
+    public void StartSetting()
+    {
+        SceneManager.LoadScene(sceneName: "Settings");
+    }
+
+    public void Exit()
+    {
+        Application.Quit();
+    }
+}
+
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+public class SettingsScript : MonoBehaviour
+{
+    public Sprite audioOn;
+    public Sprite audioOff;
+    public GameObject ButtonAudio;
+
+    public Slider sliderAudio;
+
+    public AudioClip clip;
+    public AudioSource audio;
+
+    
+    void Update()
+    {
+        audio.volume = sliderAudio.value;
+    }
+    public void OnnOffAudio()
+    {
+        if(AudioListener.volume == 1)
+        {
+            AudioListener.volume = 0;
+            ButtonAudio.GetComponent<Image>().sprite = audioOff;
+        }
+        else
+        {
+            AudioListener.volume = 1;
+            ButtonAudio.GetComponent<Image>().sprite = audioOn;
+        }
+    }
+    public void PlaySound()
+    {
+        audio.PlayOneShot(clip);
+    }
+    public void BackToMenu()
+    {
+        SceneManager.LoadScene(sceneName: "Start");
+    }
+ 
+}
